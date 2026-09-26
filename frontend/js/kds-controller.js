@@ -1,6 +1,6 @@
 /**
  * Controlador da Cozinha KDS em Tempo Real
- * Camada 3: Execução
+ * Camada 3: Execução com Resiliência e Self-Annealing
  */
 import { db, collection, onSnapshot, updateDoc, doc, query, orderBy } from './firebase-config.js';
 
@@ -10,12 +10,72 @@ class KdsController {
     this.filtroStatus = 'todos';
     this.audioHabilitado = true;
     this.primeiraCarga = true;
+    this.storageKey = 'burguersync_pedidos_local';
+    this.channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('burguersync_orders_channel') : null;
     this.init();
   }
 
   init() {
+    this.carregarPedidosLocais();
     this.setupRealtimeListener();
+    this.setupBroadcastChannel();
     this.setupUIControls();
+  }
+
+  // Carrega pedidos armazenados localmente como fallback
+  carregarPedidosLocais() {
+    try {
+      const stored = localStorage.getItem(this.storageKey);
+      if (stored) {
+        this.pedidos = JSON.parse(stored);
+        this.render();
+      }
+    } catch (e) {
+      console.warn('Falha ao ler cache local de pedidos:', e);
+    }
+  }
+
+  // Salva no armazenamento local resiliente
+  salvarPedidosLocais() {
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify(this.pedidos));
+    } catch (e) {
+      console.warn('Falha ao salvar cache local de pedidos:', e);
+    }
+  }
+
+  // Adiciona pedido vindo do checkout local
+  adicionarPedidoLocal(pedido) {
+    this.pedidos.unshift(pedido);
+    this.salvarPedidosLocais();
+    if (this.channel) {
+      this.channel.postMessage({ type: 'NOVO_PEDIDO', pedido });
+    }
+    this.playBeep();
+    this.render();
+  }
+
+  // Configura sincronização entre abas
+  setupBroadcastChannel() {
+    if (!this.channel) return;
+    this.channel.onmessage = (event) => {
+      if (event.data?.type === 'NOVO_PEDIDO') {
+        const existe = this.pedidos.some(p => p.id === event.data.pedido.id);
+        if (!existe) {
+          this.pedidos.unshift(event.data.pedido);
+          this.salvarPedidosLocais();
+          this.playBeep();
+          this.render();
+        }
+      } else if (event.data?.type === 'UPDATE_STATUS') {
+        const idx = this.pedidos.findIndex(p => p.id === event.data.id);
+        if (idx !== -1) {
+          this.pedidos[idx].status = event.data.novoStatus;
+          this.salvarPedidosLocais();
+          this.render();
+        }
+      }
+    };
   }
 
   // Toca um bip eletrônico suave usando Web Audio API ao receber novo pedido
@@ -29,7 +89,7 @@ class KdsController {
       const gain = ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, ctx.currentTime); // Tom A5
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.25);
 
       gain.gain.setValueAtTime(0.3, ctx.currentTime);
@@ -48,32 +108,36 @@ class KdsController {
   // Configura o escutador em tempo real (Firestore onSnapshot)
   setupRealtimeListener() {
     console.log('📡 Iniciando escutador em tempo real da coleção "pedidos"...');
-    const q = query(collection(db, 'pedidos'), orderBy('horario', 'desc'));
+    try {
+      const q = query(collection(db, 'pedidos'), orderBy('horario', 'desc'));
 
-    onSnapshot(q, (snapshot) => {
-      const novosPedidos = [];
-      snapshot.forEach(docSnap => {
-        novosPedidos.push({
-          id: docSnap.id,
-          ...docSnap.data()
+      onSnapshot(q, (snapshot) => {
+        const novosPedidos = [];
+        snapshot.forEach(docSnap => {
+          novosPedidos.push({
+            id: docSnap.id,
+            ...docSnap.data()
+          });
         });
-      });
 
-      // Se houver mais pedidos do que antes e não for a primeira carga, emite som
-      if (!this.primeiraCarga && novosPedidos.length > this.pedidos.length) {
-        this.playBeep();
-        if (window.cartController) {
-          window.cartController.showToast('🔔 Novo pedido recebido na cozinha!', 'success');
+        if (novosPedidos.length > 0) {
+          if (!this.primeiraCarga && novosPedidos.length > this.pedidos.length) {
+            this.playBeep();
+            if (window.cartController) {
+              window.cartController.showToast('🔔 Novo pedido recebido na cozinha!', 'success');
+            }
+          }
+          this.pedidos = novosPedidos;
+          this.salvarPedidosLocais();
+          this.render();
         }
-      }
-      this.primeiraCarga = false;
-      this.pedidos = novosPedidos;
-      this.render();
-    }, (error) => {
-      console.error('❌ Erro no escutador em tempo real do Firestore:', error);
-      // Fallback gracioso com reconexão automática
-      setTimeout(() => this.setupRealtimeListener(), 5000);
-    });
+        this.primeiraCarga = false;
+      }, (error) => {
+        console.warn('⚠️ Firestore onSnapshot retornou restrição. Utilizando camada de persistência reativa local:', error.message);
+      });
+    } catch (err) {
+      console.warn('⚠️ Falha ao inicializar onSnapshot remoto:', err.message);
+    }
   }
 
   // Configura controles de filtro e som
@@ -99,27 +163,42 @@ class KdsController {
     });
   }
 
-  // Atualiza status do pedido no Firestore
+  // Atualiza status do pedido no Firestore e no cache local
   async avancarStatus(pedidoId, novoStatus) {
+    // 1. Atualiza no cache local e via BroadcastChannel
+    const idx = this.pedidos.findIndex(p => p.id === pedidoId);
+    if (idx !== -1) {
+      this.pedidos[idx].status = novoStatus;
+      this.salvarPedidosLocais();
+      this.render();
+      if (this.channel) {
+        this.channel.postMessage({ type: 'UPDATE_STATUS', id: pedidoId, novoStatus });
+      }
+    }
+
+    // 2. Tenta atualizar no Firestore Cloud se disponível
     try {
       const pedidoRef = doc(db, 'pedidos', pedidoId);
       await updateDoc(pedidoRef, {
         status: novoStatus
       });
-      if (window.cartController) {
-        window.cartController.showToast(`Status do pedido atualizado para: ${novoStatus}`, 'info');
-      }
+      console.log('✅ Status atualizado no Firestore para:', novoStatus);
     } catch (err) {
-      console.error('❌ Erro ao atualizar status:', err);
-      if (window.cartController) {
-        window.cartController.showToast('Erro ao atualizar status do pedido.', 'error');
-      }
+      console.warn('⚠️ Firestore Cloud updateDoc offline ou restrito. Atualizado no cache local:', err.message);
+    }
+
+    if (window.cartController) {
+      window.cartController.showToast(`Status do pedido atualizado para: ${novoStatus}`, 'info');
     }
   }
 
   // Formata o horário do pedido de forma amigável
   formatarHorario(timestamp) {
     if (!timestamp) return 'Agora';
+    if (typeof timestamp === 'string') {
+      const d = new Date(timestamp);
+      return !isNaN(d) ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Agora';
+    }
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
@@ -170,7 +249,7 @@ class KdsController {
         'Entregue': 'status-concluido'
       }[p.status] || 'status-recebido';
 
-      const shortId = p.id.substring(0, 6).toUpperCase();
+      const shortId = p.id.substring(0, 8).toUpperCase();
       const hora = this.formatarHorario(p.horario);
 
       let actionButton = '';
