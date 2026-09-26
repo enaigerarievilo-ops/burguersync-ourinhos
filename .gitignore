@@ -1,0 +1,19 @@
+# Dependências
+node_modules/
+package-lock.json
+
+# Variáveis de Ambiente e Segredos Sensíveis
+.env
+mcp-server.json
+
+# Diretórios Transitórios e Caches
+.tmp/
+.temp/
+.cache/
+*.log
+
+# IDE & Sistema Operacional
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

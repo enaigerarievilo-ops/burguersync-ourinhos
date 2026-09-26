@@ -1,0 +1,21 @@
+{
+  "name": "burguersync-ourinhos",
+  "version": "1.0.0",
+  "description": "BurguerSync Ourinhos - Autoatendimento e KDS em Tempo Real",
+  "type": "module",
+  "scripts": {
+    "test": "node execution/test-runner.js",
+    "validate": "node execution/validate-env.js",
+    "publish:github": "node execution/github-publisher.js",
+    "start": "npx -y serve -s . -l 3000"
+  },
+  "keywords": [
+    "burguer-sync",
+    "firebase",
+    "kds",
+    "google-antigravity",
+    "google-stitch"
+  ],
+  "author": "Equipe BurguerSync & Google Antigravity",
+  "license": "MIT"
+}

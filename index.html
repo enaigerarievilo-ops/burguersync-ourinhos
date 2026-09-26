@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BurguerSync Ourinhos - Autoatendimento & KDS Realtime</title>
+  <meta name="description" content="Plataforma de autoatendimento e cozinha em tempo real para hamburgueria artesanal em Ourinhos. Desenvolvido com Google Antigravity, Google Stitch e Firebase.">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="frontend/style.css">
+</head>
+<body class="dark-theme">
+
+  <!-- ==================== CABEÇALHO PRINCIPAL & NAVEGAÇÃO ==================== -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="logo-wrapper">
+        <span class="logo-icon">🍔</span>
+        <div class="logo-text">
+          <h1 class="logo-title">BurguerSync <span class="badge-city">Ourinhos</span></h1>
+        </div>
+      </div>
+      
+      <!-- Seletor de Painel / Abas -->
+      <nav class="mode-selector" aria-label="Seleção de Painel">
+        <button id="btnModoCliente" class="btn-tab active" type="button">
+          <span>🛍️</span>
+          <span>Cardápio</span>
+        </button>
+        <button id="btnModoCozinha" class="btn-tab" type="button">
+          <span>👨‍🍳</span>
+          <span>Cozinha</span>
+          <span id="contadorPedidosCozinha" class="badge-count">0</span>
+        </button>
+      </nav>
+
+      <!-- Status da Loja -->
+      <div class="header-status-pill">
+        <span class="pulse-dot"></span>
+        <span>Loja Aberta • Chapa Quente</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== CONTAINER PRINCIPAL ==================== -->
+  <main class="main-layout">
+
+    <!-- Faixa Operacional -->
+    <aside class="op-banner">
+      <div class="op-banner-left">
+        <span class="pulse-dot"></span>
+        <p><strong class="op-banner-tag">Tempo Estimado:</strong> 25 a 40 min • Entregando em toda Ourinhos/SP</p>
+      </div>
+      <div class="op-banner-right">
+        <span>🔥 Chapa a 220°C • Sincronização em Tempo Real</span>
+      </div>
+    </aside>
+
+    <!-- ==================== 1. VISÃO DO CLIENTE (CARDÁPIO & CHECKOUT) ==================== -->
+    <section id="visaoCliente" class="view-section active">
+      <div class="client-grid">
+        
+        <!-- Coluna da Vitrine de Produtos -->
+        <div class="catalog-column">
+          <header class="section-heading">
+            <h2>Lanches & Porções Artesanais</h2>
+            <p class="subtitle">Feitos na brasa, ingredientes nobres e entregues na temperatura ideal.</p>
+          </header>
+
+          <div id="gradeLanches" class="products-grid">
+            <!-- Os cards de produtos são injetados dinamicamente via JS -->
+          </div>
+        </div>
+
+        <!-- Coluna Lateral: Carrinho & Checkout -->
+        <aside class="order-sidebar">
+          <section id="carrinho" class="checkout-panel">
+            <div class="panel-header">
+              <h2 class="panel-title">
+                <span>🛍️</span>
+                <span>Seu Pedido</span>
+              </h2>
+              <span id="badgeContadorItens" class="badge-items-count">0 itens</span>
+            </div>
+            
+            <!-- Lista de Itens no Carrinho -->
+            <ul id="listaItensCarrinho" class="cart-items-list">
+              <!-- Itens injetados via JS -->
+            </ul>
+
+            <!-- Resumo Financeiro -->
+            <div class="price-summary">
+              <div class="summary-line">
+                <span>Subtotal</span>
+                <span id="subtotalPedido">R$ 0,00</span>
+              </div>
+              <div class="summary-line">
+                <span>Taxa de Entrega (Fixa)</span>
+                <span id="taxaEntrega">R$ 5,00</span>
+              </div>
+              <div class="summary-line total-line">
+                <strong>Total Geral</strong>
+                <strong id="totalPedido">R$ 0,00</strong>
+              </div>
+            </div>
+
+            <!-- Formulário de Checkout -->
+            <form id="formCheckout" class="checkout-form">
+              <fieldset class="form-group">
+                <legend class="form-legend">Dados para Entrega</legend>
+                <input type="text" id="nomeCliente" name="nomeCliente" class="input-field" placeholder="Nome Completo *" required>
+                <input type="tel" id="telefoneCliente" name="telefoneCliente" class="input-field" placeholder="WhatsApp / Telefone *" required>
+                <input type="text" id="enderecoCliente" name="enderecoCliente" class="input-field" placeholder="Rua, Número e Bairro *" required>
+                <input type="text" id="referenciaEntrega" name="referenciaEntrega" class="input-field" placeholder="Ponto de Referência ou Apto">
+              </fieldset>
+
+              <fieldset class="form-group">
+                <legend class="form-legend">Forma de Pagamento</legend>
+                <div class="payment-options">
+                  <label class="radio-card">
+                    <input type="radio" name="tipoPagamento" value="pix" checked>
+                    <span class="radio-content">⚡ Pix Imediato</span>
+                  </label>
+                  <label class="radio-card">
+                    <input type="radio" name="tipoPagamento" value="cartao">
+                    <span class="radio-content">💳 Cartão na Entrega</span>
+                  </label>
+                  <label class="radio-card">
+                    <input type="radio" name="tipoPagamento" value="dinheiro">
+                    <span class="radio-content">💵 Dinheiro</span>
+                  </label>
+                </div>
+                
+                <!-- Campo Dinâmico de Troco -->
+                <div id="trocoContainer" class="troco-wrapper hidden">
+                  <input type="text" id="valorTroco" class="input-field" placeholder="Troco para quanto? (Ex: R$ 100,00)">
+                </div>
+              </fieldset>
+
+              <button id="btnFinalizarPedido" type="submit" class="btn-cta-submit" disabled>
+                <span>Confirmar e Enviar Pedido</span>
+                <span class="icon-arrow">➔</span>
+              </button>
+            </form>
+          </section>
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- ==================== 2. VISÃO DA COZINHA (KDS EM TEMPO REAL) ==================== -->
+    <section id="visaoCozinha" class="view-section hidden">
+      <header class="kds-header">
+        <div>
+          <h2>Painel de Comandas da Cozinha (KDS)</h2>
+          <p class="subtitle">Sincronização instantânea com a chapa e entrega sem recarregar a tela.</p>
+        </div>
+        
+        <div class="kds-header-right">
+          <div class="kds-live-chip">
+            <span class="pulse-dot"></span>
+            <span>Transmissão Realtime Ativa</span>
+          </div>
+
+          <!-- Contadores Rápidos -->
+          <div class="kds-status-counters">
+            <div class="counter-chip">Recebidos: <strong id="counter-recebidos" class="text-neon">0</strong></div>
+            <div class="counter-chip">Preparo: <strong id="counter-preparo" class="text-yellow">0</strong></div>
+            <div class="counter-chip">Em Rota: <strong id="counter-entrega" class="text-blue">0</strong></div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Barra de Ferramentas KDS -->
+      <div class="kds-controls-bar">
+        <div class="kds-filters">
+          <button type="button" class="btn-kds-filter active" data-filter="todos">Todos</button>
+          <button type="button" class="btn-kds-filter" data-filter="Recebido">Recebidos</button>
+          <button type="button" class="btn-kds-filter" data-filter="Em Preparo">Em Preparo</button>
+          <button type="button" class="btn-kds-filter" data-filter="Saiu para Entrega">Em Rota</button>
+          <button type="button" class="btn-kds-filter" data-filter="Entregue">Entregues</button>
+        </div>
+
+        <button id="btnToggleSound" type="button" class="btn-toggle-sound">
+          <span class="material-symbols-outlined text-[16px]">volume_up</span>
+          <span>Bip Ativo</span>
+        </button>
+      </div>
+
+      <!-- Grid de Comandas em Tempo Real -->
+      <div id="listaPedidos" class="kds-grid">
+        <!-- Comandas injetadas reativamente via Firestore onSnapshot -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==================== MODAL DE CONFIRMAÇÃO DO PEDIDO ==================== -->
+  <div id="modalSucesso" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <div id="modalSucessoBody">
+        <!-- Conteúdo preenchido dinamicamente -->
+      </div>
+      <button id="btnFecharModal" type="button" class="btn-modal-close">Entendido / Acompanhar</button>
+    </div>
+  </div>
+
+  <!-- Notificação Flutuante (Toast) -->
+  <aside id="toastNotification" class="toast-container hidden" role="status" aria-live="polite"></aside>
+
+  <!-- Módulos de Execução ESM -->
+  <script type="module" src="frontend/js/app.js"></script>
+</body>
+</html>
